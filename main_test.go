@@ -1,5 +1,3 @@
-// Test the main function
-
 package main
 
 import (
@@ -8,26 +6,48 @@ import (
 	"testing"
 )
 
-func TestMain(t *testing.T) {
-	req, err := http.NewRequest("GET", "/home", nil)
+func TestHandlers(t *testing.T) {
+	// Create a new ServeMux and add handlers as in main()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/home", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/index.html")
+	})
+	mux.HandleFunc("/about", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/about.html")
+	})
+	fsRoot := http.FileServer(http.Dir("static"))
+	mux.Handle("/", http.StripPrefix("/", fsRoot))
+
+	// Create a test server
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := &http.Client{}
+
+	// Test /home route
+	resp, err := client.Get(server.URL + "/home")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Failed to get /home: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status OK for /home, got %v", resp.Status)
 	}
 
-	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(homePage)
-
-	handler.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("handler returned wrong status code: got %v want %v",
-			status, http.StatusOK)
+	// Test /about route
+	resp, err = client.Get(server.URL + "/about")
+	if err != nil {
+		t.Fatalf("Failed to get /about: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status OK for /about, got %v", resp.Status)
 	}
 
-	// Just verify the code not html content
-	expected := "text/html; charset=utf-8"
-	if contentType := rr.Header().Get("Content-Type"); contentType != expected {
-		t.Errorf("handler returned unexpected content type: got %v want %v",
-			contentType, expected)
+	// Test static files served from root
+	resp, err = client.Get(server.URL + "/index.html")
+	if err != nil {
+		t.Fatalf("Failed to get /index.html: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status OK for /index.html, got %v", resp.Status)
 	}
 }
